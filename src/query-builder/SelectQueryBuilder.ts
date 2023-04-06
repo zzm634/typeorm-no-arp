@@ -717,6 +717,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
         alias: string,
         condition?: string,
         parameters?: ObjectLiteral,
+        mapAsEntity?: Function | string,
     ): this
 
     /**
@@ -781,6 +782,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
         alias: string,
         condition?: string,
         parameters?: ObjectLiteral,
+        mapAsEntity?: Function | string,
     ): this {
         this.addSelect(alias)
         this.join(
@@ -791,6 +793,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
             parameters,
             mapToProperty,
             false,
+            mapAsEntity,
         )
         return this
     }
@@ -905,6 +908,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
         alias: string,
         condition?: string,
         parameters?: ObjectLiteral,
+        mapAsEntity?: Function | string,
     ): this
 
     /**
@@ -969,6 +973,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
         alias: string,
         condition?: string,
         parameters?: ObjectLiteral,
+        mapAsEntity?: Function | string,
     ): this {
         this.addSelect(alias)
         this.join(
@@ -979,6 +984,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
             parameters,
             mapToProperty,
             false,
+            mapAsEntity,
         )
         return this
     }
@@ -2008,6 +2014,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
         parameters?: ObjectLiteral,
         mapToProperty?: string,
         isMappingMany?: boolean,
+        mapAsEntity?: Function | string,
     ): void {
         this.setParameters(parameters || {})
 
@@ -2016,6 +2023,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
             this.expressionMap,
         )
         joinAttribute.direction = direction
+        joinAttribute.mapAsEntity = mapAsEntity
         joinAttribute.mapToProperty = mapToProperty
         joinAttribute.isMappingMany = isMappingMany
         joinAttribute.entityOrProperty = entityOrProperty // relationName
