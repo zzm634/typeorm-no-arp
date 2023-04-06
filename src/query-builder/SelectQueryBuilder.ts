@@ -38,11 +38,12 @@ import { FindOptionsOrder } from "../find-options/FindOptionsOrder"
 import { FindOptionsWhere } from "../find-options/FindOptionsWhere"
 import { FindOptionsUtils } from "../find-options/FindOptionsUtils"
 import { FindOptionsRelations } from "../find-options/FindOptionsRelations"
-import { ApplyValueTransformers } from "../util/ApplyValueTransformers"
 import { OrmUtils } from "../util/OrmUtils"
 import { EntityPropertyNotFoundError } from "../error/EntityPropertyNotFoundError"
 import { AuroraMysqlDriver } from "../driver/aurora-mysql/AuroraMysqlDriver"
 import { InstanceChecker } from "../util/InstanceChecker"
+import { FindOperator } from "../find-options/FindOperator"
+import { ApplyValueTransformers } from "../util/ApplyValueTransformers"
 
 /**
  * Allows to build complex sql queries in a fashion way and execute those queries.
@@ -4182,10 +4183,13 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                         parameterValue = where[key].value
                     }
                     if (column.transformer) {
-                        parameterValue = ApplyValueTransformers.transformTo(
-                            column.transformer,
-                            parameterValue,
-                        )
+                        parameterValue instanceof FindOperator
+                            ? parameterValue.transformValue(column.transformer)
+                            : (parameterValue =
+                                  ApplyValueTransformers.transformTo(
+                                      column.transformer,
+                                      parameterValue,
+                                  ))
                     }
 
                     // if (parameterValue === null) {
