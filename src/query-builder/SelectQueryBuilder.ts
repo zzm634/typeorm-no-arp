@@ -92,7 +92,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
         sql += this.createLockExpression()
         sql = sql.trim()
         if (this.expressionMap.subQuery) sql = "(" + sql + ")"
-        return sql
+        return this.replacePropertyNamesForTheWholeQuery(sql)
     }
 
     // -------------------------------------------------------------------------
@@ -1155,10 +1155,11 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
     ): this {
         this.expressionMap.wheres = [] // don't move this block below since computeWhereParameter can add where expressions
         const condition = this.getWhereCondition(where)
-        if (condition)
+        if (condition) {
             this.expressionMap.wheres = [
                 { type: "simple", condition: condition },
             ]
+        }
         if (parameters) this.setParameters(parameters)
         return this
     }
@@ -2016,7 +2017,9 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
         isMappingMany?: boolean,
         mapAsEntity?: Function | string,
     ): void {
-        this.setParameters(parameters || {})
+        if (parameters) {
+            this.setParameters(parameters)
+        }
 
         const joinAttribute = new JoinAttribute(
             this.connection,
@@ -2027,16 +2030,17 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
         joinAttribute.mapToProperty = mapToProperty
         joinAttribute.isMappingMany = isMappingMany
         joinAttribute.entityOrProperty = entityOrProperty // relationName
-        joinAttribute.condition = condition ? condition : undefined // joinInverseSideCondition
+        joinAttribute.condition = condition // joinInverseSideCondition
         // joinAttribute.junctionAlias = joinAttribute.relation.isOwning ? parentAlias + "_" + destinationTableAlias : destinationTableAlias + "_" + parentAlias;
         this.expressionMap.joinAttributes.push(joinAttribute)
 
-        if (joinAttribute.metadata) {
+        const joinAttributeMetadata = joinAttribute.metadata
+        if (joinAttributeMetadata) {
             if (
-                joinAttribute.metadata.deleteDateColumn &&
+                joinAttributeMetadata.deleteDateColumn &&
                 !this.expressionMap.withDeleted
             ) {
-                const conditionDeleteColumn = `${aliasName}.${joinAttribute.metadata.deleteDateColumn.propertyName} IS NULL`
+                const conditionDeleteColumn = `${aliasName}.${joinAttributeMetadata.deleteDateColumn.propertyName} IS NULL`
                 joinAttribute.condition = joinAttribute.condition
                     ? ` ${joinAttribute.condition} AND ${conditionDeleteColumn}`
                     : `${conditionDeleteColumn}`
@@ -2045,7 +2049,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
             joinAttribute.alias = this.expressionMap.createAlias({
                 type: "join",
                 name: aliasName,
-                metadata: joinAttribute.metadata,
+                metadata: joinAttributeMetadata,
             })
             if (
                 joinAttribute.relation &&
@@ -2472,31 +2476,59 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
      */
     protected createOrderByExpression() {
         const orderBys = this.expressionMap.allOrderBys
-        if (Object.keys(orderBys).length > 0)
-            return (
-                " ORDER BY " +
-                Object.keys(orderBys)
-                    .map((columnName) => {
-                        if (typeof orderBys[columnName] === "string") {
-                            return (
-                                this.replacePropertyNames(columnName) +
-                                " " +
-                                orderBys[columnName]
-                            )
-                        } else {
-                            return (
-                                this.replacePropertyNames(columnName) +
-                                " " +
-                                (orderBys[columnName] as any).order +
-                                " " +
-                                (orderBys[columnName] as any).nulls
-                            )
-                        }
-                    })
-                    .join(", ")
-            )
+        if (Object.keys(orderBys).length === 0) return ""
 
-        return ""
+        return (
+            " ORDER BY " +
+            Object.keys(orderBys)
+                .map((columnName) => {
+                    const orderValue =
+                        typeof orderBys[columnName] === "string"
+                            ? orderBys[columnName]
+                            : (orderBys[columnName] as any).order +
+                              " " +
+                              (orderBys[columnName] as any).nulls
+                    const selection = this.expressionMap.selects.find(
+                        (s) => s.selection === columnName,
+                    )
+                    if (
+                        selection &&
+                        !selection.aliasName &&
+                        columnName.indexOf(".") !== -1
+                    ) {
+                        const criteriaParts = columnName.split(".")
+                        const aliasName = criteriaParts[0]
+                        const propertyPath = criteriaParts.slice(1).join(".")
+                        const alias = this.expressionMap.aliases.find(
+                            (alias) => alias.name === aliasName,
+                        )
+                        if (alias) {
+                            const column =
+                                alias.metadata.findColumnWithPropertyPath(
+                                    propertyPath,
+                                )
+                            if (column) {
+                                const orderAlias = DriverUtils.buildAlias(
+                                    this.connection.driver,
+                                    undefined,
+                                    aliasName,
+                                    column.databaseName,
+                                )
+                                return (
+                                    this.escape(orderAlias) +
+                                    " " +
+                                    orderBys[columnName]
+                                )
+                            }
+                        }
+                    }
+
+                    return (
+                        this.replacePropertyNames(columnName) + " " + orderValue
+                    )
+                })
+                .join(", ")
+        )
     }
 
     /**
@@ -2837,6 +2869,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                             ? selection.aliasName
                             : DriverUtils.buildAlias(
                                   this.connection.driver,
+                                  undefined,
                                   aliasName,
                                   column.databaseName,
                               ),
@@ -2849,6 +2882,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                     selection: selectionPath,
                     aliasName: DriverUtils.buildAlias(
                         this.connection.driver,
+                        undefined,
                         aliasName,
                         column.databaseName,
                     ),
@@ -3393,6 +3427,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                     const columnAlias = this.escape(
                         DriverUtils.buildAlias(
                             this.connection.driver,
+                            undefined,
                             mainAliasName,
                             primaryColumn.databaseName,
                         ),
@@ -3403,6 +3438,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
 
                     const alias = DriverUtils.buildAlias(
                         this.connection.driver,
+                        undefined,
                         "ids_" + mainAliasName,
                         primaryColumn.databaseName,
                     )
@@ -3467,6 +3503,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                 } else {
                     const alias = DriverUtils.buildAlias(
                         this.connection.driver,
+                        undefined,
                         "ids_" + mainAliasName,
                         metadata.primaryColumns[0].databaseName,
                     )
@@ -3626,6 +3663,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                         this.escape(
                             DriverUtils.buildAlias(
                                 this.connection.driver,
+                                undefined,
                                 aliasName,
                                 column!.databaseName,
                             ),
@@ -3639,7 +3677,11 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                                 select.aliasName === orderCriteria,
                         )
                     )
-                        return this.escape(parentAlias) + "." + orderCriteria
+                        return (
+                            this.escape(parentAlias) +
+                            "." +
+                            this.escape(orderCriteria)
+                        )
 
                     return ""
                 }
@@ -3661,6 +3703,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                         this.escape(
                             DriverUtils.buildAlias(
                                 this.connection.driver,
+                                undefined,
                                 aliasName,
                                 column!.databaseName,
                             ),
@@ -3675,7 +3718,9 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                     )
                 ) {
                     orderByObject[
-                        this.escape(parentAlias) + "." + orderCriteria
+                        this.escape(parentAlias) +
+                            "." +
+                            this.escape(orderCriteria)
                     ] = orderBys[orderCriteria]
                 } else {
                     orderByObject[orderCriteria] = orderBys[orderCriteria]
@@ -4079,23 +4124,27 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                         : undefined
 
                 let aliasPath = `${alias}.${propertyPath}`
-                if (column.isVirtualProperty && column.query) {
-                    const selection = this.expressionMap.selects.find(
-                        (s) => s.selection === aliasPath,
-                    )
-                    if (selection) {
-                        // this is not building correctly now???
-                        aliasPath = DriverUtils.buildAlias(
-                            this.connection.driver,
-                            alias,
-                            column.databaseName,
-                        )
-                        selection.aliasName = aliasPath
-                    } else {
-                        aliasPath = `(${column.query(alias)})`
-                    }
-                }
+                // const selection = this.expressionMap.selects.find(
+                //     (s) => s.selection === aliasPath,
+                // )
+                // if (selection) {
+                //     // this is not building correctly now???
+                //     aliasPath = this.escape(
+                //         DriverUtils.buildAlias(
+                //             this.connection.driver,
+                //             undefined,
+                //             alias,
+                //             column.databaseName,
+                //         ),
+                //     )
+                //     // selection.aliasName = aliasPath
+                // } else {
+                //     if (column.isVirtualProperty && column.query) {
+                //         aliasPath = `(${column.query(alias)})`
+                //     }
+                // }
 
+                // console.log("add sort", selection, aliasPath, direction, nulls)
                 this.addOrderBy(aliasPath, direction, nulls)
                 // this.orderBys.push({ alias: alias + "." + propertyPath, direction, nulls });
             } else if (embed) {
