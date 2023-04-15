@@ -3494,6 +3494,7 @@ export class SelectQueryBuilder<Entity extends ObjectLiteral>
                                     const paramKeyResult =
                                         DriverUtils.buildAlias(
                                             this.connection.driver,
+                                            undefined,
                                             "ids_" + mainAliasName,
                                             primaryColumn.databaseName,
                                         )
