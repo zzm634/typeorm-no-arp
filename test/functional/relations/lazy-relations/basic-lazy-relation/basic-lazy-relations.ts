@@ -15,7 +15,7 @@ import { EntitySchema } from "../../../../../src"
  */
 describe("basic-lazy-relations", () => {
     let UserSchema: any, ProfileSchema: any
-    const appRoot = require("app-root-path")
+    const appRoot = process.cwd();
     const resourceDir =
         appRoot +
         "/test/functional/relations/lazy-relations/basic-lazy-relation/"
